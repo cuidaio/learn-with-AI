@@ -1,0 +1,68 @@
+name: learn-with-ai
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: learn-postgres
+    environment:
+      POSTGRES_USER: learn
+      POSTGRES_PASSWORD: learn123
+      POSTGRES_DB: learn
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U learn"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - learn-with-ai-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: learn-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - learn-with-ai-network
+
+  backend:
+    build:
+      context: ./backend
+    container_name: learn-backend
+    env_file:
+      - .env
+    ports:
+      - "7480:7480"
+    environment:
+      - PYTHONPATH=/app
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - learn-with-ai-network
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: learn-frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - learn-with-ai-network
+
+volumes:
+  postgres_data:
+
+networks:
+  learn-with-ai-network:
+    driver: bridge

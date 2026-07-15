@@ -1,0 +1,39 @@
+{
+  "file_hashes": {
+    ".claude/CLAUDE.md": "6e46bd750bbb742d38901c1a0d6e7be5fca9ca4defee5f77e4499cb9c5d82f24",
+    ".claude/hooks/vexp-guard.sh": "1c4253ea6a0cc7ef65e952a67146b91a7d8b0a42f027e279d1a9f6c579e14614",
+    ".pytest_cache/README.md": "2acc99a889d1a06e54247d1ee162c0d55d8943001d2dec89f5df36b35a0a87ef",
+    "backend/.pytest_cache/README.md": "12728de47ea953637a40414213d1ffe64ed4ae1d7a1d7814d7878fa860602ad9",
+    "backend/Dockerfile": "b107ba69b5af06c535a6c1db20c8bdab8e496c1cb5d943499b4fa2fc03057be0",
+    "backend/app/__init__.py": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+    "backend/app/core/__init__.py": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+    "backend/app/core/chunking.py": "58fcb71c19eeabbd69e1e5e5638959c094ef6d785b09f7f3739e31f82fbb9eab",
+    "backend/app/core/config.py": "7e064feac217b7f9d4fd7cd0ee2a2d1fc6bbff90b82e826641a512d84849161a",
+    "backend/app/core/embeddings.py": "55a7e4bcf343f5e1123c2dead06a7ba8620d1c9d49f5008b00c0d02464e03725",
+    "backend/app/core/logging.py": "6807b2bc97c02f00f8d91365d39af9252ad329d0a92fa606df4f1653848f94d8",
+    "backend/app/core/preprocess.py": "343c0fa146180c76b4a94010ec4f20736b01463288d275e18395dbf8efef26cd",
+    "backend/app/database.py": "d5ae6f3a6c8565f2615cf742dfe79232a998b57225750f0e6a235d13ff6a14ea",
+    "backend/app/main.py": "5ba3e23986dc13d477ea8f1cb9944ab1040e8cca9b48990022e5a6baf55c5463",
+    "backend/app/models.py": "c7557da5599dc7b2404818e7d4839972c3640f86dd89f6232bd6c23bcfda12b7",
+    "backend/app/routes/__init__.py": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+    "backend/app/routes/documents.py": "0ed7fbde8a0383acc8d7e4fdc12255b19118e3b3842e520cd5d5e72927283218",
+    "backend/app/schemas.py": "f2a8d5438a82fad3e961436a56ba7a2d6e5c2d05d550d52307c011a11614f251",
+    "backend/entrypoint.sh": "766c736e71f096e470cae4a4444a7ccfd80aaf6d97292db34672e8cccc8d3538",
+    "backend/tests/test_smoke.py": "86fae0f7cfe224992eaf3c01ef8ba9be0f6f9f0fc18253ab63db928104baba13",
+    "dev_plan/M0.md": "c0369c552d3bc978af9f9bdbb4e262a0b7f522b9523a898ba4486d1488794d0b",
+    "dev_plan/M1.1.md": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+    "dev_plan/M1.md": "759f03ce1bc374e5db812c6745cf3c0b03c78846d66f89226b83daf49f2cb71f",
+    "frontend/Dockerfile": "b52e77376a10c006883765a2d9a2d21d7867451351d531a8158f62903487b4db",
+    "frontend/src/main.js": "6549bf3738cd559d07175708c9f3ac27df5f7f01797ccc77b7a8dac22cc3c34b",
+    "frontend/vite.config.js": "371b8991867543e01b65df3dcd9f2078a80ba6e70e6815f6e79c31cd75871de1"
+  },
+  "indexed_at_commit": "",
+  "indexed_at_timestamp": "2026-07-11T16:01:44.679379+00:00",
+  "schema_version": 3,
+  "stats": {
+    "total_edges": 108,
+    "total_files": 26,
+    "total_nodes": 148
+  },
+  "vexp_version": "2.1.5"
+}
