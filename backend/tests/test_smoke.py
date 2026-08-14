@@ -1,8 +1,10 @@
-"""M1 Rewrite smoke tests — 5 core tests."""
+"""M1 Rewrite smoke tests — 5 core tests + 1 optional e2e."""
 import sys
 import os
 from unittest.mock import patch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import pytest
 
 from app.core.atomic_splitter import split_atomic_units
 from app.core.config import settings
@@ -10,6 +12,17 @@ from app.core.preprocess import clean_text
 from app.core.section_block_builder import build_section_blocks
 from app.core.structural_signal_extractor import extract_structural_signals
 from app.core.sub_chunk_builder import build_sub_chunks
+
+
+def _has_real_services() -> bool:
+    """检查是否配置了真实的数据库和 API key（用于 e2e 测试）。"""
+    db_url = os.environ.get("DATABASE_URL", "")
+    api_key = os.environ.get("EMBEDDING_API_KEY", "")
+    # CI 环境使用占位 key，跳过 e2e
+    is_ci = os.environ.get("CI", "").lower() in ("true", "1")
+    if is_ci:
+        return False
+    return bool(db_url) and bool(api_key) and not api_key.startswith(("sk-test", "sk-ci", "sk-placeholder"))
 
 
 # =========================================================================
@@ -171,10 +184,12 @@ def test_section_build_plain_text() -> None:
 # Test 5: e2e_upload (requires running backend)
 # =========================================================================
 
+@pytest.mark.skipif(not _has_real_services(), reason="e2e test requires real DB + API key")
 def test_e2e_upload() -> None:
     """End-to-end upload test via TestClient.
 
-    使用 mock 嵌入函数避免 CI 中调用外部 SiliconFlow API。
+    使用 mock 嵌入函数避免真实网络请求。
+    仅在配置了真实数据库和 API key 时运行（本地开发），CI 中自动跳过。
     """
     from fastapi.testclient import TestClient
     from app.main import app

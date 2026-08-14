@@ -51,7 +51,7 @@ jobs:
 
       - name: Run tests
         working-directory: backend
-        run: pytest -v --tb=short
+        run: pytest -v --tb=short -rs
 
   # ── 前端构建验证 ─────────────────────────────────────────────────────────
   frontend:
