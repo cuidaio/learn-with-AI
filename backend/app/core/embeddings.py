@@ -12,6 +12,7 @@ def get_embedding_client() -> OpenAI:
         _client = OpenAI(
             api_key=settings.embedding_api_key,
             base_url=settings.embedding_base_url,
+            timeout=settings.embedding_timeout,
         )
     return _client
 
@@ -40,8 +41,18 @@ def embed_text(text: str) -> list[float]:
 def verify_embedding_dim() -> int:
     """发送测试请求，验证 dimensions 参数生效，返回实际维度。
 
-    API 不可达时（如 CI / 离线环境）仅警告，不阻塞启动。
+    - 占位 / 测试 key（sk-test、sk-ci-*、sk-placeholder 等）直接跳过，不发网络请求。
+    - API 不可达或响应过慢时仅警告，不阻塞启动。
     """
+    key = (settings.embedding_api_key or "").strip()
+    if not key or key.startswith(("sk-test", "sk-ci", "sk-placeholder")):
+        logger.info(
+            "Embedding dimension verification skipped (test/placeholder key), "
+            "using configured default %d.",
+            settings.embedding_dim,
+        )
+        return settings.embedding_dim
+
     try:
         vec = embed_text("verify")
     except Exception as e:
@@ -49,6 +60,7 @@ def verify_embedding_dim() -> int:
             "Embedding dimension verification skipped (API unreachable): %s", e
         )
         return settings.embedding_dim
+
     actual = len(vec)
     expected = settings.embedding_dim
     if actual == expected:

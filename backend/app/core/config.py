@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     embedding_base_url: str = ""
     embedding_model: str = "Qwen/Qwen3-Embedding-4B"
     embedding_dim: int = 1024
+    embedding_timeout: int = 10          # Embedding API 单次调用超时（秒）
 
     # ── LLM 独立配置 ──────────────────────────────────────
     llm_api_key: str = ""
