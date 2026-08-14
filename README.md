@@ -22,8 +22,10 @@ AI 知识学习平台：文档上传 → 语义分块 → 向量化 → 知识�
 
 ## 前置条件
 
-- [Docker Desktop](https://www.docker.com/products/docker-compose/)（Windows / macOS 均可）
-- 一个可用的 **Embedding** 服务（如 SiliconFlow、OpenAI）
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/)（Windows / macOS 均可）
+  - **Windows 用户**：安装后务必在 Settings → General 中勾选 **Use the WSL 2 based engine**，否则容器可能无法启动。
+  - 启动 Docker Desktop，等状态栏显示 **"Docker is running"** 后再执行下一步。
+- 一个可用的 **Embedding** 服务（如 SiliconFlow、OpenAI、智谱等兼容 OpenAI 接口的平台）
 - 一个可用的 **LLM** 服务（如 DeepSeek、OpenAI）
 
 ## 快速开始
@@ -77,6 +79,15 @@ docker compose up -d
 | Redis | localhost:6379 |
 
 打开浏览器访问 http://localhost:5173 即可使用。
+
+### 快速体验（可选）
+
+仓库提供了 2 篇示例文档（`sample_docs/`），方便你开箱即体验完整流程：
+
+1. 启动后进入「文档管理」。
+2. 上传 `sample_docs/` 下的 `机器学习基础.txt` 和/或 `知识图谱入门.md`。
+3. 等待系统自动完成分块、向量化、实体与关系提取。
+4. 切换到「知识图谱」浏览实体关系，或进入「问答」输入问题（如"什么是 Transformer？"RAG 会基于你上传的文档回答）。
 
 ## 常用命令
 
