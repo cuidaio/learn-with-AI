@@ -1,6 +1,7 @@
 """M1 Rewrite smoke tests — 5 core tests."""
 import sys
 import os
+from unittest.mock import patch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.core.atomic_splitter import split_atomic_units
@@ -171,49 +172,56 @@ def test_section_build_plain_text() -> None:
 # =========================================================================
 
 def test_e2e_upload() -> None:
-    """End-to-end upload test via TestClient."""
+    """End-to-end upload test via TestClient.
+
+    使用 mock 嵌入函数避免 CI 中调用外部 SiliconFlow API。
+    """
     from fastapi.testclient import TestClient
     from app.main import app
 
-    client = TestClient(app)
+    # Mock embed_text 返回固定维度向量，避免 CI 中调用外部 SiliconFlow API
+    dummy_vec = [0.01] * settings.embedding_dim
+    with patch("app.routes.documents.embed_text", return_value=dummy_vec), \
+         patch("app.core.embeddings.embed_text", return_value=dummy_vec), \
+         TestClient(app) as client:
 
-    # Upload a document with headings (each section > 500 chars to survive merge)
-    text = (
-        "## 第一章 绪论\n\n"
-        "心理学是研究心理现象及其规律的科学。它既研究动物的心理也研究人的心理。"
-        "感觉知觉记忆思维情绪意志都是心理现象。"
-        + "心理学研究方法包括实验法观察法调查法。" * 35
-        + "\n\n## 第二章 研究方法\n\n"
-        "心理学的研究方法包括实验法和观察法。实验法控制条件下进行。观察法自然情境下进行。"
-        + "问卷法调查法访谈法也是常用方法。" * 35
-    )
-    resp = client.post("/api/documents", json={"title": "测试文档", "raw_text": text})
-    assert resp.status_code == 201, f"upload failed: {resp.status_code} {resp.text}"
+        # Upload a document with headings (each section > 500 chars to survive merge)
+        text = (
+            "## 第一章 绪论\n\n"
+            "心理学是研究心理现象及其规律的科学。它既研究动物的心理也研究人的心理。"
+            "感觉知觉记忆思维情绪意志都是心理现象。"
+            + "心理学研究方法包括实验法观察法调查法。" * 35
+            + "\n\n## 第二章 研究方法\n\n"
+            "心理学的研究方法包括实验法和观察法。实验法控制条件下进行。观察法自然情境下进行。"
+            + "问卷法调查法访谈法也是常用方法。" * 35
+        )
+        resp = client.post("/api/documents", json={"title": "测试文档", "raw_text": text})
+        assert resp.status_code == 201, f"upload failed: {resp.status_code} {resp.text}"
 
-    data = resp.json()
-    assert data["status"] == "success"
-    assert "document_id" in data
-    assert data["total_atomic_units"] > 0
-    assert data["total_sub_chunks"] > 0
-    assert data["total_section_blocks"] >= 2, f"expected >= 2 sections, got {data['total_section_blocks']}"
-    assert data["total_characters"] > 0
+        data = resp.json()
+        assert data["status"] == "success"
+        assert "document_id" in data
+        assert data["total_atomic_units"] > 0
+        assert data["total_sub_chunks"] > 0
+        assert data["total_section_blocks"] >= 2, f"expected >= 2 sections, got {data['total_section_blocks']}"
+        assert data["total_characters"] > 0
 
-    doc_id = data["document_id"]
+        doc_id = data["document_id"]
 
-    # Fetch chunks
-    resp2 = client.get(f"/api/documents/{doc_id}/chunks")
-    assert resp2.status_code == 200, f"fetch chunks failed: {resp2.status_code}"
-    chunks_data = resp2.json()
-    assert len(chunks_data["section_blocks"]) >= 2
-    for sb in chunks_data["section_blocks"]:
-        assert sb["char_count"] > 0
-        if sb["sub_chunks"]:
-            for sc in sb["sub_chunks"]:
-                assert sc["char_count"] > 0
-                assert sc["start_pos"] < sc["end_pos"]
+        # Fetch chunks
+        resp2 = client.get(f"/api/documents/{doc_id}/chunks")
+        assert resp2.status_code == 200, f"fetch chunks failed: {resp2.status_code}"
+        chunks_data = resp2.json()
+        assert len(chunks_data["section_blocks"]) >= 2
+        for sb in chunks_data["section_blocks"]:
+            assert sb["char_count"] > 0
+            if sb["sub_chunks"]:
+                for sc in sb["sub_chunks"]:
+                    assert sc["char_count"] > 0
+                    assert sc["start_pos"] < sc["end_pos"]
 
-    # List documents
-    resp3 = client.get("/api/documents")
-    assert resp3.status_code == 200
-    docs = resp3.json()["documents"]
-    assert any(d["id"] == doc_id for d in docs), "uploaded doc should appear in list"
+        # List documents
+        resp3 = client.get("/api/documents")
+        assert resp3.status_code == 200
+        docs = resp3.json()["documents"]
+        assert any(d["id"] == doc_id for d in docs), "uploaded doc should appear in list"
