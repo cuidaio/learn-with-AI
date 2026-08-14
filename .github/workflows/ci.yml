@@ -49,6 +49,10 @@ jobs:
         working-directory: backend
         run: pip install -r requirements.txt
 
+      - name: Collect tests (debug)
+        working-directory: backend
+        run: pytest --collect-only -q 2>&1 | tail -10
+
       - name: Run tests
         working-directory: backend
         run: pytest -v --tb=short -rs
