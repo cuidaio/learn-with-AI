@@ -127,7 +127,9 @@ def clean_text(raw_text: str) -> str:
     text = re.sub(r"^---.*?\n---", "", text, flags=re.DOTALL)
 
     text = normalize_whitespace(text)
-    text = fix_broken_lines(text)
+    # 页码必须在 fix_broken_lines 之前移除，否则断行合并会把页码
+    # 粘附到其他行（如图片行），导致整行匹配的正则无法命中。
     text = remove_page_numbers(text)
+    text = fix_broken_lines(text)
     text = clean_markdown_artifacts(text)
     return text.strip()
