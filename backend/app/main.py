@@ -5,7 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.database import Base, engine, init_db
-from app.routes import ask, ask_stream, documents, graph, questions, tasks
+from app.core.di_container import init_container
+from app.routes import ask, ask_stream, config, documents, entities, folders, graph, learning_events, questions, tasks
 from app.schemas import HealthResponse, MessageResponse
 
 
@@ -13,6 +14,26 @@ from app.schemas import HealthResponse, MessageResponse
 async def lifespan(app: FastAPI):
     init_db()
     settings.log_config()
+
+    # M3.3: 初始化 DI 容器，注入依赖到 TaskManager
+    container = init_container()
+    from app.core.task_manager import configure_task_manager
+
+    configure_task_manager(
+        task_factory=container.get_task_factory(),
+        task_store=container.get_task_store(),
+    )
+
+    # M3.11: 从数据库加载持久化配置，覆盖 .env 默认值
+    from app.database import SessionLocal
+    from app.routes.config import init_config_from_db
+    db = SessionLocal()
+    try:
+        init_config_from_db(db)
+        settings.log_config()
+    finally:
+        db.close()
+
     yield
 
 
@@ -29,9 +50,14 @@ app.add_middleware(
 app.include_router(documents.router)
 app.include_router(ask.router)
 app.include_router(ask_stream.router)
+app.include_router(entities.router)
+app.include_router(folders.router)
 app.include_router(graph.router)
+app.include_router(graph.graph_browser_router)
+app.include_router(learning_events.router)
 app.include_router(questions.router)
 app.include_router(tasks.router)
+app.include_router(config.router)
 
 
 @app.get("/", response_model=MessageResponse)

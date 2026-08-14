@@ -1,5 +1,5 @@
 """
-Document routes — M1 Rewrite: 5-stage pipeline.
+Document routes — M1 Rewrite: 5-stage pipeline.  M3: 文件夹关联 + 实体高亮。
 """
 
 import uuid
@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.atomic_splitter import split_atomic_units
 from app.core.embeddings import embed_text
+from app.core.entity_highlighter import highlight_entities
 from app.core.logging import logger
 from app.core.preprocess import clean_text
 from app.core.section_block_builder import build_section_blocks
@@ -19,34 +20,17 @@ from app.models import Document, SectionBlock, SubChunk
 from app.schemas import (
     ChunkDetailResponse,
     DocumentCreate,
+    DocumentHighlightResponse,
     DocumentListResponse,
     DocumentResponse,
     DocumentUploadResponse,
+    DocumentUpdate,
+    HighlightItem,
     SectionBlockItem,
     SubChunkItem,
 )
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
-
-
-def _run_graph_build_async(document_id: uuid.UUID) -> None:
-    """后台分阶段构建图谱（独立 DB session）。
-
-    阶段1：实体提取 → commit → 前端可见
-    阶段2：关系提取 → commit（依赖阶段1的实体）
-    """
-    from app.database import SessionLocal
-    from app.core.graph_builder import extract_and_save_entities, extract_and_save_relations
-
-    db = SessionLocal()
-    try:
-        has_entities = extract_and_save_entities(db, document_id)
-        if has_entities:
-            extract_and_save_relations(db, document_id)
-    except Exception:
-        logger.warning("Async graph build failed", exc_info=True)
-    finally:
-        db.close()
 
 
 def _doc_to_response(doc: Document) -> DocumentResponse:
@@ -58,6 +42,9 @@ def _doc_to_response(doc: Document) -> DocumentResponse:
         total_sub_chunks=doc.total_sub_chunks or 0,
         total_section_blocks=doc.total_section_blocks or 0,
         created_at=doc.created_at,
+        folder_id=doc.folder_id,
+        position=doc.position or 0,
+        user_title=doc.user_title,
     )
 
 
@@ -72,6 +59,20 @@ def upload_document(payload: DocumentCreate, background_tasks: BackgroundTasks, 
 
     doc_id = uuid.uuid4()
     title = payload.title or raw_text[:60]
+
+    # M3.1: 标题重名检测（仅当用户明确提供标题时）
+    if payload.title:
+        existing = db.query(Document).filter(Document.title == title).first()
+        if existing:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "status": "conflict",
+                    "existing_document_id": str(existing.id),
+                    "suggested_title": f"{title} (2)",
+                    "message": f"文档「{title}」已存在",
+                },
+            )
 
     # Stage 1: clean
     cleaned = clean_text(raw_text)
@@ -150,8 +151,16 @@ def upload_document(payload: DocumentCreate, background_tasks: BackgroundTasks, 
         doc.lifecycle_status = "new"
         db.commit()
 
-        # M2.8: 后台异步知识图谱构建（不阻塞上传响应）
-        background_tasks.add_task(_run_graph_build_async, doc_id)
+        # M3.2: 自动创建实体提取任务（导入资料后自动进入任务列表）
+        from app.core.task_manager import task_manager as tm
+
+        ext_task = tm.create_and_schedule(
+            db,
+            task_type="entity_extraction",
+            params={"document_id": str(doc_id), "title": title},
+            background_tasks=background_tasks,
+        )
+        db.commit()
 
     except HTTPException:
         db.rollback()
@@ -232,4 +241,59 @@ def get_document_chunks(id: uuid.UUID, db: Session = Depends(get_db)):
             )
             for s in sections
         ],
+    )
+
+
+# ── PUT /api/documents/{id}（M3: 重命名/移动/排序） ──────────────────────
+
+
+@router.put("/{id}", response_model=DocumentResponse)
+def update_document(id: uuid.UUID, payload: DocumentUpdate, db: Session = Depends(get_db)):
+    doc = db.query(Document).filter(Document.id == id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if payload.title is not None:
+        doc.title = payload.title.strip()
+    # 用 exclude_unset 检测 folder_id 是否被显式传入（允许设为 None）
+    raw = payload.model_dump(exclude_unset=True)
+    if "folder_id" in raw:
+        doc.folder_id = raw["folder_id"]
+    if payload.position is not None:
+        doc.position = payload.position
+    if payload.user_title is not None:
+        doc.user_title = payload.user_title.strip()
+    db.commit()
+    db.refresh(doc)
+    return _doc_to_response(doc)
+
+
+# ── DELETE /api/documents/{id}（M3） ──────────────────────────────────────
+
+
+@router.delete("/{id}", status_code=204)
+def delete_document(id: uuid.UUID, db: Session = Depends(get_db)):
+    doc = db.query(Document).filter(Document.id == id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    db.delete(doc)
+    db.commit()
+
+
+# ── GET /api/documents/{id}/default（M3: 原文 + 实体高亮） ─────────────
+
+
+@router.get("/{id}/default", response_model=DocumentHighlightResponse)
+def get_document_with_highlights(id: uuid.UUID, db: Session = Depends(get_db)):
+    doc = db.query(Document).filter(Document.id == id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    content = doc.cleaned_text or doc.raw_text
+    highlights = highlight_entities(db, id, content)
+
+    return DocumentHighlightResponse(
+        document_id=doc.id,
+        title=doc.title,
+        content=content,
+        highlights=[HighlightItem(**h) for h in highlights],
     )

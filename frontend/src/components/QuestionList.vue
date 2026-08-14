@@ -35,7 +35,7 @@
           <div
             v-for="(optText, optKey) in q.options"
             :key="optKey"
-            :class="['q-option', { 'q-option-correct': expandedIds.value.has(q.id) && isCorrectOption(q, optKey) }]"
+            :class="['q-option', { 'q-option-correct': isExpanded(q.id) && isCorrectOption(q, optKey) }]"
           >
             <span class="q-opt-marker">
               <template v-if="q.question_type === 'multi_choice'">☐</template>
@@ -43,16 +43,16 @@
             </span>
             <span class="q-opt-key">{{ optKey }}.</span>
             <span class="q-opt-text">{{ optText }}</span>
-            <span v-if="expandedIds.value.has(q.id) && isCorrectOption(q, optKey)" class="q-opt-correct">✓</span>
+            <span v-if="isExpanded(q.id) && isCorrectOption(q, optKey)" class="q-opt-correct">✓</span>
           </div>
         </div>
 
         <!-- Answer (collapsible) -->
         <div class="q-answer-section">
           <button class="q-toggle" @click="toggleAnswer(q.id)">
-            {{ expandedIds.value.has(q.id) ? '隐藏答案' : '显示答案' }}
+            {{ isExpanded(q.id) ? '隐藏答案' : '显示答案' }}
           </button>
-          <div v-if="expandedIds.value.has(q.id)" class="q-answer">
+          <div v-if="isExpanded(q.id)" class="q-answer">
             {{ q.answer }}
           </div>
         </div>
@@ -62,23 +62,25 @@
 </template>
 
 <script setup>
-import { shallowRef } from 'vue'
+import { reactive } from 'vue'
 
 const props = defineProps({
   questions: { type: Array, default: () => [] },
   loading: { type: Boolean, default: false },
 })
 
-const expandedIds = shallowRef(new Set())
+const expandedIds = reactive(new Set())
+
+function isExpanded(id) {
+  return expandedIds && expandedIds.has(id)
+}
 
 function toggleAnswer(id) {
-  const next = new Set(expandedIds.value)
-  if (next.has(id)) {
-    next.delete(id)
+  if (expandedIds.has(id)) {
+    expandedIds.delete(id)
   } else {
-    next.add(id)
+    expandedIds.add(id)
   }
-  expandedIds.value = next
 }
 
 function isCorrectOption(q, key) {

@@ -21,12 +21,14 @@ RELATION_PROMPT = """[SYSTEM] 你是一位知识工程专家。以下是已从�
 ]
 
 【关系类型】
-- is_a: 上下位关系（如"自我意识" is_a "心理现象"）
-- contains: 包含关系（如"自我意识" contains "自我概念"）
+- is_a: 严格的类属/上下位关系（如"自我意识" is_a "心理现象"、"认知发展阶段理论" is_a "理论"）
+  — 注意：理论家/学者与其研究概念之间是 applies_to，不是 is_a
+- contains: 部分-整体包含关系（如"自我意识" contains "自我概念"）
 - causes: 因果关系（如"认知发展" causes "自我意识变化"）
 - contrasts: 对比关系（如"皮亚杰" contrasts "维果茨基"）
 - precedes: 时序关系（如"形式运算" precedes "后形式运算"）
-- applies_to: 应用于（如"皮亚杰理论" applies_to "教育实践"）
+- applies_to: 应用于（如"皮亚杰" applies_to "教育实践"、"认知发展理论" applies_to "教学策略"）
+  — 理论家/理论作用于概念/方法时使用 applies_to，不是 is_a
 - develops: 发展过程（如"自我评价" develops "自我概念"）
 
 【提取规则】
@@ -79,13 +81,32 @@ def extract_relations(content: str, entity_names: list[str]) -> list[dict]:
             extra_body={"thinking": {"type": "disabled"}},
         )
         raw = response.choices[0].message.content or ""
+    except Exception as e:
+        logger.warning(
+            "Relation extraction LLM call failed with json_object mode, "
+            "retrying without: %s", e,
+        )
+        try:
+            response = client.chat.completions.create(
+                model=settings.llm_model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1,
+                max_tokens=4096,
+                timeout=settings.graph_llm_timeout,
+                extra_body={"thinking": {"type": "disabled"}},
+            )
+            raw = response.choices[0].message.content or ""
+        except Exception as e2:
+            logger.error("Relation extraction LLM call failed (fallback as well): %s", e2)
+            return []
+    try:
         relations = _parse_relations(raw, set(entity_names))
         logger.info("Relation extraction: %d/%d relations in %.3fs (raw len=%d)", len(relations), len(entity_names), time.monotonic() - t0, len(raw))
         if not relations and raw.strip():
             logger.debug("Relation raw response (first 200): %s", raw[:200])
         return relations
     except Exception as e:
-        logger.error("Relation extraction LLM call failed: %s", e)
+        logger.error("Relation extraction parsing failed: %s", e)
         return []
 
 
@@ -160,4 +181,18 @@ def _filter_relations(items: list[dict], valid_names: set[str]) -> list[dict]:
             "relation_type": rtype,
             "description": str(item.get("description", ""))[:100],
         })
-    return validated
+
+    # 移除冗余关系：A is_a B 与 B contains A 语义重复 → 保留 is_a，移除 contains
+    is_a_pairs = {(r["source"], r["target"]) for r in validated if r["relation_type"] == "is_a"}
+    result = [
+        r for r in validated
+        if not (
+            r["relation_type"] == "contains"
+            and (r["target"], r["source"]) in is_a_pairs
+        )
+    ]
+
+    if len(result) < len(validated):
+        logger.info("Removed %d redundant relations (A is_a B ⇔ B contains A)", len(validated) - len(result))
+
+    return result

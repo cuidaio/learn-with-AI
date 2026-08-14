@@ -23,6 +23,10 @@ class Document(Base):
     total_section_blocks = Column(Integer, default=0)
     lifecycle_status = Column(String(20), default="new")
     processed_at = Column(DateTime, nullable=True)
+    # M3: 文件夹 + 排序 + 自定义标题
+    folder_id = Column(UUID(as_uuid=True), ForeignKey("folders.id", ondelete="SET NULL"), nullable=True)
+    position = Column(Integer, default=0)
+    user_title = Column(String(255), nullable=True)
 
     section_blocks = relationship("SectionBlock", back_populates="document", cascade="all, delete-orphan")
     sub_chunks = relationship("SubChunk", back_populates="document", cascade="all, delete-orphan")
@@ -46,6 +50,13 @@ class Entity(Base):
     confidence = Column(Float, default=1.0)
     created_at = Column(DateTime, default=datetime.utcnow)
     extra_meta = Column("metadata", JSONB, default=dict)
+
+    # M3.6: 被介绍上下文 + 筛选状态
+    introduction_context = Column(Text, nullable=True)
+    filter_action = Column(String(20), default="pending")   # pending|keep|review|discard
+    filter_reason = Column(String(100), nullable=True)
+    filter_metadata = Column(JSONB, default=dict)
+    source = Column(String(20), default="llm")              # llm|manual
 
     document = relationship("Document", back_populates="entities")
 
@@ -105,11 +116,11 @@ class Question(Base):
 
 
 class Task(Base):
-    """M2.8.2 异步任务 — 出题/组卷/批改的统一任务表。"""
+    """M2.8.2 异步任务 — 出题/组卷/批改的统一任务表。M3: 添加卡片字段。"""
     __tablename__ = "tasks"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    task_type = Column(String(20), nullable=False)        # question_generation
+    task_type = Column(String(20), nullable=False)        # question_generation | graph_generation
     status = Column(String(20), default="pending")        # pending|running|completed|failed
 
     params = Column(JSONB, nullable=False)                 # 任务参数
@@ -121,12 +132,46 @@ class Task(Base):
     completed_steps = Column(Integer, default=0)
     current_step_description = Column(Text, nullable=True)
 
+    # M3: 卡片字段
+    card_title = Column(String(255), nullable=True)
+    card_icon = Column(String(50), nullable=True)
+    result_content_type = Column(String(50), nullable=True)  # document|chat|entities|questions|knowledge_graph
+    is_default = Column(Integer, default=0)                   # 0/1
+    progress = Column(Integer, default=0)                     # 0-100
+    progress_text = Column(String(255), nullable=True)
+
     # 时间戳
     created_at = Column(DateTime, default=datetime.utcnow)
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
 
     extra_meta = Column("metadata", JSONB, default=dict)
+
+
+class Folder(Base):
+    """M3: 文件夹。"""
+    __tablename__ = "folders"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(255), nullable=False)
+    parent_id = Column(UUID(as_uuid=True), nullable=True)
+    position = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class LearningEvent(Base):
+    """M3: 学习事件埋点。"""
+    __tablename__ = "learning_events"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), default=uuid.uuid4)
+    document_id = Column(UUID(as_uuid=True), ForeignKey("documents.id", ondelete="SET NULL"), nullable=True)
+    event_type = Column(String(30), nullable=False)
+    entity_id = Column(UUID(as_uuid=True), nullable=True)
+    sub_chunk_id = Column(UUID(as_uuid=True), nullable=True)
+    question_id = Column(UUID(as_uuid=True), nullable=True)
+    context = Column(JSONB, default=dict)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class SubChunk(Base):

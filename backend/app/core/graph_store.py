@@ -20,7 +20,7 @@ def save_entities(
     """批量保存实体，返回 {实体名称: UUID} 映射。
 
     Args:
-        entity_list: [{"name", "type", "description"}, ...]
+        entity_list: [{"name", "type", "description", ...}]
     """
     name_to_id: dict[str, UUID] = {}
     for item in entity_list:
@@ -29,6 +29,10 @@ def save_entities(
             name=item["name"],
             entity_type=item.get("type", "concept"),
             description=item.get("description", ""),
+            introduction_context=item.get("introduction_context", ""),
+            filter_action=item.get("filter_action", "pending"),
+            filter_reason=item.get("filter_reason"),
+            source=item.get("source", "llm"),
             confidence=1.0,
         )
         db.add(ent)
@@ -55,6 +59,97 @@ def get_high_confidence_entities(db: Session, document_id: UUID, min_confidence:
         .order_by(Entity.confidence.desc())
         .all()
     )
+
+
+def get_filtered_entities(db: Session, document_id: UUID) -> list[Entity]:
+    """获取文档中 filter_action='keep' 的实体（用于出题）。"""
+    return (
+        db.query(Entity)
+        .filter(
+            Entity.document_id == document_id,
+            Entity.filter_action == "keep",
+        )
+        .order_by(Entity.confidence.desc(), Entity.name)
+        .all()
+    )
+
+
+def search_entities(
+    db: Session,
+    document_id: UUID,
+    filter_action: str | None = None,
+    entity_type: str | None = None,
+    search: str | None = None,
+    sort_by: str = "name_asc",
+    limit: int = 100,
+    offset: int = 0,
+) -> tuple[list[Entity], int]:
+    """搜索实体，支持按类型/状态/关键词筛选 + 排序 + 分页。
+
+    Returns:
+        (entities_list, total_count)
+    """
+    q = db.query(Entity).filter(Entity.document_id == document_id)
+
+    if filter_action and filter_action != "all":
+        q = q.filter(Entity.filter_action == filter_action)
+    if entity_type:
+        q = q.filter(Entity.entity_type == entity_type)
+    if search:
+        pattern = f"%{search}%"
+        q = q.filter(
+            Entity.name.ilike(pattern) | Entity.description.ilike(pattern)
+        )
+
+    total = q.count()
+
+    sort_map = {
+        "name_asc": Entity.name.asc(),
+        "name_desc": Entity.name.desc(),
+        "created_asc": Entity.created_at.asc(),
+        "created_desc": Entity.created_at.desc(),
+    }
+    order = sort_map.get(sort_by, Entity.name.asc())
+    q = q.order_by(order).offset(offset).limit(limit)
+
+    return q.all(), total
+
+
+def lookup_entity_definition(
+    db: Session,
+    entity_name: str,
+    exclude_document_id: UUID | None = None,
+) -> dict | None:
+    """跨文档查找实体的最佳定义（仅限已确认的实体）。
+
+    Args:
+        entity_name: 实体名称
+        exclude_document_id: 排除当前文档 ID，用于跨文档查询
+
+    Returns:
+        dict with name, entity_type, description, introduction_context,
+        source_document_id, source_document_title; or None
+    """
+    q = db.query(Entity).filter(
+        Entity.name == entity_name,
+        Entity.filter_action == "keep",
+    )
+    if exclude_document_id:
+        q = q.filter(Entity.document_id != exclude_document_id)
+
+    entity = q.order_by(Entity.confidence.desc(), Entity.created_at.desc()).first()
+    if not entity:
+        return None
+
+    doc = db.query(Document).filter(Document.id == entity.document_id).first()
+    return {
+        "name": entity.name,
+        "entity_type": entity.entity_type,
+        "description": entity.description,
+        "introduction_context": entity.introduction_context,
+        "source_document_id": str(entity.document_id),
+        "source_document_title": doc.title if doc else "",
+    }
 
 
 def delete_entities_by_document(db: Session, document_id: UUID) -> None:

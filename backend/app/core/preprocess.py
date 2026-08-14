@@ -15,7 +15,14 @@ def normalize_whitespace(text: str) -> str:
 
 
 def fix_broken_lines(text: str) -> str:
-    """合并异常断行（跳过代码块和表格）。"""
+    """合并异常断行（跳过代码块和表格）。
+
+    向前跳过空白行查找可合并的下一行，处理「成熟\n\n的个体。」这类中间有空行的断行。
+    跳过 YAML 分隔符 `---`、`...` 等，避免误吞噬 frontmatter。
+    """
+    # 需要跳过的独立行（YAML frontmatter 分隔符、Markdown 分隔线等）
+    _SKIP_STRIPPED = frozenset({"---", "...", "___", "***"})
+
     lines = text.split("\n")
     result: list[str] = []
     in_code_block = False
@@ -44,22 +51,33 @@ def fix_broken_lines(text: str) -> str:
         else:
             in_table = False
 
-        next_line = lines[i + 1].strip() if i + 1 < len(lines) else ""
         if (
             not in_code_block
-            and i + 1 < len(lines)
             and stripped != ""
+            and stripped not in _SKIP_STRIPPED
+            and not stripped.startswith("---")
+            and not stripped.startswith("#")
             and not re.search(r"[。！？；.!?;:]$", stripped)
-            and next_line != ""
-            and not re.match(r"^[A-Z]", next_line)
-            and not re.match(r"^[、。，！？；：]", next_line)
         ):
-            merged = stripped + lines[i + 1].strip()
-            result.append(merged)
-            i += 2
-        else:
-            result.append(line)
-            i += 1
+            # 向前查找下一个非空行（跳过中间空白行）
+            j = i + 1
+            while j < len(lines) and lines[j].strip() == "":
+                j += 1
+            if j < len(lines):
+                next_stripped = lines[j].strip()
+                if (
+                    next_stripped != ""
+                    and next_stripped not in _SKIP_STRIPPED
+                    and not re.match(r"^[A-Z]", next_stripped)
+                    and not re.match(r"^[、。，！？；：]", next_stripped)
+                ):
+                    merged = stripped + next_stripped
+                    result.append(merged)
+                    i = j + 1
+                    continue
+
+        result.append(line)
+        i += 1
 
     return "\n".join(result)
 
@@ -102,8 +120,11 @@ def clean_text(raw_text: str) -> str:
 
     logger.info("Starting text cleaning")
 
+    # 预先统一换行符（\r\n → \n），否则 YAML frontmatter 正则可能因 \r 不命中
+    text = raw_text.replace("\r\n", "\n").replace("\r", "\n")
+
     # YAML frontmatter removal — before any line-level processing
-    text = re.sub(r"^---\n.*?\n---\n?", "", raw_text, flags=re.DOTALL)
+    text = re.sub(r"^---.*?\n---", "", text, flags=re.DOTALL)
 
     text = normalize_whitespace(text)
     text = fix_broken_lines(text)

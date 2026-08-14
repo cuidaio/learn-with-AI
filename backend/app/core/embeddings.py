@@ -16,6 +16,12 @@ def get_embedding_client() -> OpenAI:
     return _client
 
 
+def reset_embedding_client() -> None:
+    """重置缓存客户端，下次调用将使用新配置。"""
+    global _client
+    _client = None
+
+
 def embed_text(text: str) -> list[float]:
     """对单段文本生成向量。"""
     client = get_embedding_client()

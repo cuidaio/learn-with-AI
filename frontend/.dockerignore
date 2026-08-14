@@ -1,0 +1,17 @@
+# 依赖（由容器内 npm install 重新生成，无需带入构建上下文）
+node_modules/
+
+# 版本控制 / 编辑器 / 系统
+.git/
+.gitignore
+.vscode/
+.idea/
+.DS_Store
+
+# 日志 / 缓存
+*.log
+.npm/
+.cache/
+
+# 文档
+*.md

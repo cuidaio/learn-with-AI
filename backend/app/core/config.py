@@ -30,6 +30,13 @@ class Settings(BaseSettings):
     section_max_chars: int = 3000     # 章节块尽量不超过此值
     paragraph_split_chars: int = 300  # 段落超过此长度拆分为句子
 
+    # ── 实体提取并行配置（M3.4） ──────────────────────────
+    entity_extraction_workers: int = 3          # 并行提取并发数
+    entity_extraction_similarity_threshold: float = 0.85  # 去重相似度阈值
+
+    # ── 实体筛选配置（M3.6） ────────────────────────────
+    entity_filter_enabled: bool = True           # 是否启用后处理筛选
+
     # ── 知识图谱配置（M2.8） ──────────────────────────────
     graph_extraction_batch_size: int = 10
     graph_min_confidence: float = 0.6

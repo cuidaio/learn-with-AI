@@ -226,7 +226,7 @@ def _validate_question(item: dict) -> dict | None:
     difficulty = max(0.0, min(1.0, difficulty))
 
     result: dict = {
-        "type": qtype,
+        "question_type": qtype,
         "stem": stem,
         "answer": json.dumps(answer, ensure_ascii=False) if isinstance(answer, list) else str(answer),
         "bloom_level": bloom,
@@ -276,16 +276,35 @@ def _generate_for_entity(
     )
 
     t0 = time.monotonic()
-    response = client.chat.completions.create(
-        model=settings.llm_model,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.3,
-        max_tokens=4096,
-        timeout=settings.question_timeout,
-        response_format={"type": "json_object"},
-        extra_body={"thinking": {"type": "disabled"}},
-    )
-    raw = response.choices[0].message.content or ""
+    try:
+        response = client.chat.completions.create(
+            model=settings.llm_model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+            max_tokens=4096,
+            timeout=settings.question_timeout,
+            response_format={"type": "json_object"},
+            extra_body={"thinking": {"type": "disabled"}},
+        )
+        raw = response.choices[0].message.content or ""
+    except Exception as e:
+        logger.warning(
+            "Question gen LLM call failed with json_object mode, "
+            "retrying without: %s", e,
+        )
+        try:
+            response = client.chat.completions.create(
+                model=settings.llm_model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=4096,
+                timeout=settings.question_timeout,
+                extra_body={"thinking": {"type": "disabled"}},
+            )
+            raw = response.choices[0].message.content or ""
+        except Exception as e2:
+            logger.error("Question gen LLM call failed (fallback as well): %s", e2)
+            return []
     parsed = _parse_questions(raw)
     valid = [q for q in parsed if q is not None]
     logger.info(
@@ -301,12 +320,12 @@ def save_questions(
     questions: list[dict],
     entity_ids: list[UUID] | None = None,
 ) -> int:
-    """批量保存题目到数据库。"""
+    """批量保存题目到数据库，并将 DB 生成的 UUID 写回 dict。"""
     saved = 0
     for q in questions:
         row = Question(
             document_id=document_id,
-            question_type=q["type"],
+            question_type=q["question_type"],
             stem=q["stem"],
             answer=q["answer"],
             options=q.get("options"),
@@ -315,8 +334,9 @@ def save_questions(
             source_entity_ids=entity_ids,
         )
         db.add(row)
+        db.flush()          # 确保 row.id 被填充
+        q["id"] = str(row.id)   # 写回 UUID，前端依赖此字段区分题目
         saved += 1
-    db.flush()
     logger.info("Saved %d questions for document %s", saved, document_id)
     return saved
 
@@ -335,12 +355,16 @@ def generate_questions(
     if entity_ids:
         target_entities = (
             db.query(Entity)
-            .filter(Entity.id.in_(entity_ids), Entity.document_id == document_id)
+            .filter(
+                Entity.id.in_(entity_ids),
+                Entity.document_id == document_id,
+                Entity.filter_action == "keep",
+            )
             .all()
         )
     else:
-        from app.core.graph_store import get_high_confidence_entities
-        target_entities = get_high_confidence_entities(db, document_id)
+        from app.core.graph_store import get_filtered_entities
+        target_entities = get_filtered_entities(db, document_id)
 
     if not target_entities:
         logger.warning("Question generation: no valid entities found")
@@ -388,7 +412,11 @@ def execute_question_task(task_id: UUID, params: dict) -> None:
 
         entities = (
             db.query(Entity)
-            .filter(Entity.id.in_(entity_ids), Entity.document_id == document_id)
+            .filter(
+                Entity.id.in_(entity_ids),
+                Entity.document_id == document_id,
+                Entity.filter_action == "keep",
+            )
             .all()
         )
         if not entities:
@@ -459,18 +487,25 @@ def execute_question_task(task_id: UUID, params: dict) -> None:
         # 类型统计
         types_breakdown: dict[str, int] = {}
         for q in all_questions:
-            t = q["type"]
+            t = q["question_type"]
             types_breakdown[t] = types_breakdown.get(t, 0) + 1
 
+        from app.models import Document as DocModel
+        doc_title = db.query(DocModel.title).filter(DocModel.id == document_id).scalar() or "文档"
+
         complete_task(db, task_id, {
-            "questions": all_questions,
-            "metadata": {
-                "total_entities": len(tasks),
-                "successful_entities": len(tasks) - len(failed_names),
-                "failed_entities": failed_names,
-                "total_generated": len(all_questions),
-                "saved_to_db": saved,
-                "types_breakdown": types_breakdown,
+            "content_type": "questions",
+            "title": f"{doc_title} 训练题",
+            "data": {
+                "questions": all_questions,
+                "metadata": {
+                    "total_entities": len(tasks),
+                    "successful_entities": len(tasks) - len(failed_names),
+                    "failed_entities": failed_names,
+                    "total_generated": len(all_questions),
+                    "saved_to_db": saved,
+                    "types_breakdown": types_breakdown,
+                },
             },
         })
         db.commit()
