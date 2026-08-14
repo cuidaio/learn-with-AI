@@ -38,8 +38,17 @@ def embed_text(text: str) -> list[float]:
 
 
 def verify_embedding_dim() -> int:
-    """发送测试请求，验证 dimensions 参数生效，返回实际维度。"""
-    vec = embed_text("verify")
+    """发送测试请求，验证 dimensions 参数生效，返回实际维度。
+
+    API 不可达时（如 CI / 离线环境）仅警告，不阻塞启动。
+    """
+    try:
+        vec = embed_text("verify")
+    except Exception as e:
+        logger.warning(
+            "Embedding dimension verification skipped (API unreachable): %s", e
+        )
+        return settings.embedding_dim
     actual = len(vec)
     expected = settings.embedding_dim
     if actual == expected:
